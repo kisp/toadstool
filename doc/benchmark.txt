@@ -1,0 +1,28 @@
+There's a benchmark between Mark Tarver's Qi and Harropian OCaml's
+pattern matchers located at:
+http://www.lambdassociates.org/Studies/study10.htm
+
+Mark Tarver's code can be rewritten for Toadstool pretty straightforwardly:
+
+(defun harropify (x)
+  (toad-case x
+    (list Op A B) -> (h Op (harropify A) (harropify B))
+    A -> A))
+
+(defun h (op a b)
+  (toad-case op a b
+     '+ M N -> (when (and (numberp M) (numberp N))) (+ M N) 
+     '+ 0 F -> F
+     '+ F 0 -> F
+     '+ A (list '+ B C) -> (h '+ (h '+ A B) C)
+     '* M N -> (when (and (numberp M) (numberp N))) (* M N)
+     '* 0 F -> 0
+     '* F 0 -> 0
+     '* F 1 -> F
+     '* 1 F -> F
+     '* A (list '* B C) -> (h '* (h '* A B) C)
+     Op A B -> (list Op A B)))
+
+Performance is similar, 10^8 iterations took Qi 31.305 seconds and 31.038
+for Toadstool.
+

@@ -1,0 +1,8 @@
+There are no developer docs at the moment.
+
+Note that builtin pattern operators (the toadstool-impl package) are
+written using the pattern-writing protocol (the toadstool-system
+package) so they can be studied to understand the system.
+
+If you can't figure something out, drop me an email
+(sthalik@test123.ltd.pl).

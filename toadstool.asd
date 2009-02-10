@@ -3,9 +3,11 @@
     :author "Stanislaw Halik"
     :licence "MIT/X11"
     :description "Pattern matcher"
-    :depends-on () 
+    :depends-on (#:closer-mop) 
     :serial t
-    :components ((:file "core")
-                 (:file "variables")
+    :components ((:file "packages")
+                 (:file "utils")
+                 (:file "core")
                  (:file "forms")
-                 (:file "matchers")))
+                 (:file "variables")
+                 (:file "api")))

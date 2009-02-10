@@ -1,214 +1,395 @@
-(defpackage #:toadstool (:use #:cl)
-  (:nicknames #:toad))
+(in-package #:toadstool-system)
 
-(in-package #:toadstool)
-
-(defvar +magic-unbound-value+ '#:bug)
-
-(defvar *keywords* '())
-(defvar *vars*)
 (defvar *trace* '())
-(defvar *forms* '())
-(defvar *nestings* '())
-(defvar *end-nestings* '())
-(defvar *keyword-fns* '())
+(defvar *used-components*)
+(defvar *inner-forms* nil)
+(defvar *outer-form* nil)
+(defvar *normalized-components*)
+(defvar *debug-nesting-level* 0)
+(defvar *end-nestings* nil)
+(defvar *toplevel-syms*)
+(defvar *toplevel-patterns*)
 
-;; todo really do names for nesting, forms etc
+(defclass component ()
+  ())
+(defclass form (component)
+  ((form :reader form-of
+         :initarg form)
+   (inner-forms :reader inner-forms-of
+                :initarg inner-forms)
+   (outer-form :reader outer-form-of
+               :initarg outer-form))
+  (:documentation "Superclass of all components being a part of a pattern."))
+(defclass operator (form) ())
+(defclass component-mixin () ())
+(defclass nesting (component)
+  ((if-expr  :initarg :if-expr
+             :reader if-expr-of
+             :initform (error "No if-expr"))
+   (else-expr :initarg :else-expr
+              :reader else-expr-of
+              :initform (error "No else-expr"))))
+(defclass macro-mixin ()
+  (expansion))
+(defclass sequence-mixin () ())
+(defclass ignored-expr-mixin () ())
+(defclass destructuring-mixin (sequence-mixin) ())
 
-(defmacro continuation (keys &body body)
-  `(lambda (&key ,@keys &allow-other-keys)
-     ,@body))
+(defun extract-prefix (sym suffix)
+  (let* ((str (string sym))
+         (suffix (string suffix))
+         (diff (- (length str) (length suffix))))
+    (when (and (> (length str) (length suffix))
+               (string= suffix str :start2 diff))
+      (intern (subseq str 0 diff)
+              (symbol-package sym)))))
 
-(defmacro rec (name (&rest vars) &body body)
-  `(labels ((,name ,(mapcar #'car vars)
-              ,@body))
-     (let* ,vars
-       (,name ,@(mapcar #'car vars)))))
+(defgeneric name-of (component)
+  (:method ((c operator))
+    (or (extract-prefix #1=(class-name (class-of c)) '-form)
+        #1#)))
 
-(defun register-matcher-keyword (keyword fn)
-  (setf *keywords* (list* (cons keyword fn) *keywords*)))
+(defgeneric ignored-expr? (form)
+  (:documentation "If T is returned, expression isn't rebound to a gensym.
+Useful for forms like T and destructuring operators to avoid macroexpansion clutter.")
+  (:method (form)
+    nil)
+  (:method ((c macro-mixin))
+    t)
+  (:method ((c destructuring-mixin))
+    t))
 
-(defun register-matcher-form (fn)
-  (setf *forms* (cons fn *forms*)))
+(defmacro k (&body body)
+  `(lambda () . ,body))
 
-(defmacro with-gensyms ((&rest syms) &body body)
-  `(let ,(loop for i in syms collect (list i `(gensym ,(symbol-name i))))
-     ,@body))
-
-(defmacro define-keyword-fns ((op pattern expr k) &body body)
-  `(setq *keyword-fns* (cons (lambda (,op ,pattern ,expr ,k)
-                               ,@body)
-                             *keyword-fns*)))
-
-(define-keyword-fns (op pattern expr k)
-  (declare (ignore op pattern expr k))
-  '((:walk (pattern expr k)
-     (frob-expand pattern expr k))))
-
-;; todo generalize make-keyword-lambda keyword-fns
-
-(defmacro matcher-keyword-lambda ((pattern expr-name k-name)
-                                  &body cases)
-  (with-gensyms (op-name pattern-name)
-    (let* ((decls (loop for i in cases
-                        while (eq (car i) 'declare)
-                        collect i))
-           (cases (loop for i on cases
-                        unless (and (consp i)
-                                    (consp (car i))
-                                    (eq (caar i) 'declare))
-                          do (return i)))
-           (docstring (if (and (stringp (car cases))
-                               (< 1 (length cases)))
-                          (car cases)))
-           (cases (if docstring
-                      (cdr cases)
-                      cases)))
-      `(lambda (,op-name ,pattern-name ,expr-name ,k-name)
-         ,@(and docstring (list docstring))
-         ,@decls
-         (destructuring-bind ,pattern (cdr ,pattern-name)
-           ,(let ((flets (loop for i in *keyword-fns*
-                               append (funcall i op-name pattern-name
-                                               expr-name k-name))))
-              (assert (= (length (remove-duplicates flets :key #'car))
-                         (length flets))
-                      nil
-                      "Duplicate flets: ~S" flets)
-              `(flet ,flets
-                 (case ,op-name
-                   ,@cases))))))))
-
-(defmacro define-matcher-keyword ((keyword pattern expr-name k-name)
-                                  &body cases)
-  `(register-matcher-keyword
-    ',keyword
-    (matcher-keyword-lambda (,pattern ,expr-name ,k-name) ,@cases)))
-
-(defmacro define-matcher-form ((pattern expr-name k-name)
-                                  &body cases)
-  `(register-matcher-form 
-    (matcher-keyword-lambda (,pattern ,expr-name ,k-name) ,@cases)))
-
-(defun lookup-matcher-keyword (keyword)
-  (cdr (assoc keyword *keywords*)))
-
-(defun expand-foo (fn symbol-name pattern expr k)
-  (let ((keyword-expr-name (gensym symbol-name))
-        (body (lambda (expr-name)
-                (let ((*trace* (list* (cons pattern expr-name)
-                                      *trace*))) 
-                  (funcall fn :expand pattern expr-name k)))))
-    (if (symbolp expr)
-        (funcall body expr)
-        `(let ((,keyword-expr-name ,expr))
-           ,(funcall body keyword-expr-name)))))
-
-(defun expand-matcher (keyword pattern expr k)
-  (expand-foo (lookup-matcher-keyword keyword)
-              (format nil "OP-~A-" keyword)
-              pattern expr k))
-
-(defun funcall-matcher (keyword msg pattern expr k)
-  (funcall (lookup-matcher-keyword keyword)
-           msg pattern expr k))
-
-(defun lookup-matcher-form (pattern)
-  (loop for i in *forms*
-        thereis (and (funcall i :test (list 'form pattern) nil nil) i)))
-
-(defun expand-form (pattern expr k)
-  (expand-foo (lookup-matcher-form pattern)
-              (format nil "FORM-~S-" pattern)
-              (list 'form pattern) expr k))
-
-(defun frob-expand (pattern expr k)
-  (cond ((lookup-matcher-form pattern)
-         (expand-form pattern expr k))
-        ((and (consp pattern)
-              (lookup-matcher-keyword (car pattern))) 
-         (expand-matcher (car pattern) pattern expr k))
-        (t (error "Unable to parse pattern ~S" pattern))))
-
-(defun register-nesting (fn)
-  (setq *nestings* (cons fn *nestings*)))
-
-(defun register-end-nesting (fn)
-  (setq *end-nestings* (cons fn *nestings*)))
-
-(defmacro nesting-lambda ((patterns expressions guard if-expr else-expr k)
-                          &body body)
-  `(lambda (,patterns ,expressions ,guard ,if-expr ,else-expr ,k)
-     ,@body))
-
-(defmacro define-nesting ((patterns expressions guard
-                                    if-expr else-expr k)
-                          &body body)
-  `(register-nesting
-    (nesting-lambda (,patterns ,expressions ,guard
-                               ,if-expr ,else-expr ,k)
-      ,@body)))
-
-(defmacro with-end-nesting ((k) nesting-body &body body)
-  `(let ((*end-nestings* (cons (lambda (,k)
-                                 ,nesting-body)
+(defmacro with-end-nesting (((if-expr else-expr k)
+                             &body nesting-body)
+                            &body body)
+  `(let ((*end-nestings* (cons (lambda (,if-expr ,else-expr ,k)
+                                 . ,nesting-body)
                                *end-nestings*)))
      ,@body))
 
-(defun call/nestings (nestings args k)
-  (rec aux ((xs nestings))
-    (if (endp xs)
-        (funcall k)
-        (apply (car xs) (append args
-                                (list (continuation ()
-                                        (aux (cdr xs)))))))))
+(defmacro k-once (k &body body)
+  (assert (= 1 (length body)))
+  (let ((k (if (symbolp k)
+               k
+               (cadr k)))
+        (var (if (symbolp k)
+                 k
+                 (car k)))
+        (sym (gensym)))
+    ``(let ((,',sym (lambda () ,(funcall ,k))))
+        ,(let ((,var (lambda () `(funcall ,',sym))))
+           ,(car body)))))
 
-(defmacro %patmatch (patterns expressions guard if-expr else-expr)
+(defgeneric coerce-to-obj (datum)
+  (:method ((c component)) c)
+  (:method ((c symbol)) (coerce-to-obj (find-class c)))
+  (:method ((c class))
+    (when (not (closer-mop:class-finalized-p c))
+      (closer-mop:finalize-inheritance c))
+    (closer-mop:class-prototype c)))
+
+(defgeneric matches? (component datum)
+  (:documentation "Decide whether component can operate on given value")
+  (:method ((c component) datum)
+    nil)
+  (:method ((o operator) datum)
+    (let ((name (name-of o)))
+      (and (consp datum)
+           (if (consp (car datum))
+               (and (eq (caar datum) name)
+                    (or (cdar datum) t))
+               (eq (car datum) name))))))
+
+(defgeneric expand-form (form expression k)
+  (:documentation "Generate an expansion of a pattern element")
+  (:method :around ((f form) expression k)
+    (if (ignored-expr? f)
+        (call-next-method)
+        (let ((expr-name (if (gensym? expression)
+                             expression
+                             (gensym))))
+          (push (cons f expr-name) *trace*)
+          (if (gensym? expression)
+              (call-next-method)
+              `(let ((,expr-name ,expression))
+                 (declare (ignorable ,expr-name))
+                 ,(call-next-method f expr-name k)))))))
+
+(defmacro define-predicate (type)
+  (let ((pred (intern (format nil "~A?" type))))
+               `(defun ,pred (x)
+                  (typep x ',type))))
+
+(define-predicate component)
+(define-predicate form)
+(define-predicate operator)
+(define-predicate nesting)
+(define-predicate sequence-mixin)
+
+(defgeneric expand-nesting (obj k))
+
+(defmethod initialize-instance :around ((form form) &key)
+  (when (boundp '*inner-forms*) 
+    (push form *inner-forms*)) 
+  (let ((*outer-form* form)
+        (*inner-forms* nil))
+    (prog1 (call-next-method)
+      (setf (slot-value form 'inner-forms)
+            (nreverse *inner-forms*)))))
+
+(defun %mkform (class datum &optional args) 
+  (apply #'make-instance class
+         'outer-form *outer-form*
+         'form datum
+         args))
+
+(defun mkform (datum)
+  "Instantiate a form basing on DATUM with component subtype TYPE."
+  (loop for i in (components 'form)
+        for j = (coerce-to-obj i)
+        for ret = (matches? j datum)
+        do (check-type ret (or boolean cons))
+        when ret
+          do (return (%mkform i datum (and (consp ret) ret)))
+        finally (error "Datum ~S doesn't match any form" datum)))
+
+(defgeneric sequence-initial-state (sequence-mixin expr)
+  (:documentation "Initial state"))
+
+(defgeneric sequence-cdr-state (sequence-mixin state)
+  (:documentation "Next state"))
+
+(defgeneric sequence-endp (sequence-mixin state)
+  (:documentation "Check whether state is over the end of the sequence"))
+
+(defgeneric sequence-item (sequence-mixin state)
+  (:documentation "Extract the value from the current sequence state"))
+
+(defgeneric sequence-set-state (sequence-mixin state))
+
+(defgeneric sequence-get-state (sequence-mixin))
+
+(defun find-form-expr (form)
+  (cdr (or (find form *trace* :key #'car)
+           (error "No such form: ~S" form))))
+
+(defun find-sequence-form (f)
+  (loop for form = (outer-form-of f) then (outer-form-of form)
+        while form
+        when (sequence-mixin? form)
+          do (return (values form (find-form-expr form)))
+        finally (return (error "There's no SEQUENCE-MIXIN in trace ~S" f))))
+
+(defvar +nesting-keyword-list+
+  '(:if-expr :else-expr))
+
+(defun call/nestings (nestings if-expr else-expr k)
+  (if (endp nestings)
+      (funcall k if-expr else-expr)
+      (expand-nesting (apply #'make-instance
+                             (car nestings)
+                             (mappend #'list +nesting-keyword-list+
+                                      (list if-expr else-expr)))
+                      (lambda (&rest args)
+                        (apply #'call/nestings
+                               (cdr nestings)
+                               (append args (list k)))))))
+
+(defun call/end-nestings (nestings if-expr else-expr k)
+  (if (endp nestings)
+      (funcall k if-expr else-expr)
+      (funcall (car nestings) if-expr else-expr
+               (lambda (if-expr else-expr)
+                 (call/end-nestings (cdr nestings) if-expr else-expr k)))))
+
+(defmacro with-root-mixins (&body body &aux (c '(components 'component-mixin)))
+  `(progn (closer-mop:ensure-class 'component :direct-superclasses ,c)
+          (unwind-protect (progn . ,body)
+            (closer-mop:ensure-class 'component :direct-superclasses nil))))
+
+(defun normalize-components (components)
+  (loop for i in components
+        nconc (%components i)))
+
+(defun toplevel-expansion (block-name patterns exprs
+                           guard if-expr else-expr)
   (assert (= (length patterns)
-             (length expressions)))
-  (assert (not (endp patterns)))
-  (let ((kont nil)
-        (expr-syms (loop for i in expressions collect (gensym "EXPR")))
-        (nesting-list (list patterns expressions guard if-expr else-expr)))
-    (with-gensyms (block-name)
-      (setq kont
-       (continuation ()
-        `(block ,block-name
-           (let ,(mapcar #'list expr-syms expressions)
-             ,(rec aux ((patterns patterns)
-                        (expressions expr-syms)) 
-                (frob-expand (car patterns)
-                             (car expressions)
-                             (if (null (cdr patterns))
-                                 (continuation ()
-                                   (call/nestings *end-nestings*
-                                                  '() 
-                                                  (continuation ()
-                                                    `(when ,guard
-                                                       (return-from ,block-name
-                                                         ,if-expr)))))
-                                 (lambda ()
-                                   (aux (cdr patterns)
-                                        (cdr expressions)))))))
-           ,else-expr))))
-    (call/nestings *nestings* nesting-list kont)))
+             (length exprs)) nil
+             "There must be as many patterns as expressions. ~
+Got patterns: ~S, expressions: ~S"
+             patterns exprs)
+  (assert (/= 0 (length patterns)) nil "There must be at least one pattern")
+  (assert (every #'gensym? exprs))
+  (let* ((forms (mapcar #'mkform patterns))
+         (*toplevel-patterns* forms)
+         (*normalized-components* (normalize-components *used-components*))
+         (*trace* nil)
+         (*toplevel-syms* exprs))
+    (with-root-mixins
+      (labels ((aux (if-expr else-expr)
+                 (rec aux ((exprs exprs)
+                           (forms forms))
+                   (expand-form (car forms)
+                                (car exprs)
+                                (if (cdr forms)
+                                    (k
+                                      (aux (cdr exprs)
+                                           (cdr forms)))
+                                    (k
+                                      (call/end-nestings *end-nestings*
+                                                         `(when ,guard
+                                                            ,if-expr)
+                                                         else-expr
+                                                         #'aux2))))))
+               (aux2 (if-expr else-expr2)
+                 (setq else-expr else-expr2)
+                 if-expr))
+        `(progn ,(call/nestings (components 'nesting) 
+                                `(return-from ,block-name
+                                   ,if-expr)
+                                else-expr
+                                #'aux)
+                ,else-expr)))))
 
-(defun list-difference (big small &key
-                        (test #'eql) (key #'identity) test-not
-                        &aux (test (or test-not test)))
-  (loop for i in big
-        when (not (member (funcall key i) small
-                          :key key :test test))
+(defgeneric form-arguments (component)
+  (:method ((c form))
+    (list (form-of c)))
+  (:method ((c operator))
+    (cdr (form-of c))))
+
+(defmacro definit (class dlist &body body)
+  `(defmethod initialize-instance :after ((,class ,class) &key)
+     (destructuring-bind ,dlist (form-arguments ,class)
+       (apply #'reinitialize-instance ,class (progn ,@body)))))
+
+(defun remove-from-plist (plist to-remove)
+  (loop for (k v) on plist by #'cddr
+        unless (member k to-remove)
+          collect k and collect v))
+
+(defmacro thunk (form)
+  `(lambda () ,form))
+
+(defun fmt (control &rest stuff)
+  (apply #'format nil control stuff))
+
+(defun mklist (x)
+  (if (listp x)
+      x
+      (list x)))
+
+(defun partition (fn list &key (key #'identity))
+  (loop for i in list
+        if (funcall fn (funcall key i))
+          collect i into a
+        else
+          collect i into b
+        finally (return (values a b))))
+
+(defmacro defcomponent (name supers &body options)
+  (flet ((foo (key list default)
+           (let ((foo (getf list key '#1=#:foo)))
+             (cond ((null foo) '())
+                   ((eq foo '#1#) (list key (funcall default)))
+                   (t (list key foo))))))
+    (multiple-value-bind (options slots)
+        (partition (lambda (x)
+                     (and (consp x)
+                          (keywordp (car x))))
+                   options)
+      `(defclass ,name ,supers
+         ,(loop
+            for s in slots
+            collect (let* ((s (mklist s))
+                           (name (pop s))
+                           (str (string name))
+                           (of (string '#:-of))
+                           (req (if (getf s :required)
+                                    `(:initform (error "Missing initarg :~S"
+                                                       str))))
+                           (keyword (find-package '#:keyword)))
+                      (append (list name)
+                              (foo :initarg s (thunk (intern str keyword)))
+                              (foo :reader s (thunk (intern
+                                                     (fmt "~A~A" str of))))
+                              req
+                              (remove-from-plist
+                               s '(:reader :initarg :required)))))
+         ,@options))))
+
+(defmacro equality (x y)
+  `(eql ,x ,y))
+
+#+nil
+(defmethod print-object ((c form) s)
+  (if (slot-boundp c 'form)
+      (print-unreadable-object (c s :type t :identity nil)
+        (format s "~{~S~^ ~}" (form-arguments c)))
+      (call-next-method)))
+
+(defmacro if-matches (test k)
+  ``(if ,,test ,(funcall ,k)))
+
+(defun effective-inner-forms-of (c)
+  (rec aux ((xs (inner-forms-of c))
+            (tail nil)) 
+    (if (endp xs)
+        tail
+        (aux (cdr xs)
+             (append (aux (inner-forms-of (car xs))
+                          (list (car xs)))
+                     tail)))))
+(defgeneric %components (x) 
+  (:method ((c standard-object))
+    (list (class-of c)))
+  (:method ((list list))
+    (loop for i in list
+          nconc (%components i)))
+  (:method ((c symbol))
+    (%components (coerce-to-obj c))))
+
+(defun components (type)
+  (loop for i in (if (boundp '*normalized-components*)
+                     *normalized-components*
+                     (normalize-components *used-components*))
+        when (subtypep i type)
           collect i))
 
-#+nil(define-matcher-keyword (typep pattern expr)
-  )
+(defmethod expand-form ((c macro-mixin) expr k)
+  (expand-form (slot-value c 'expansion) expr k))
 
-#+nil (%patmatch (foo (bar 42 bar) foo)
-                 '(1 (2 42 2) 1)
-                 t
-                 (list foo bar) 'bad)
-#+nil (%patmatch (foo 42 . 'bar)
-                 '(abc 42 . bar)
-                 t
-                 'ok 'bad)
+(defmacro defexpand (name dlist &body body)
+  `(defmethod initialize-instance :after ((,name ,name) &key)
+     (destructuring-bind ,dlist (form-arguments ,name)
+       (setf (slot-value ,name 'expansion)
+             (mkform (progn . ,body))))))
+
+(defun debug-print (datum expr)
+  (let ((*print-level* 4))
+    (format *debug-io* "~A~S = ~S~%" (make-string *debug-nesting-level*
+                                                 :initial-element #\Space)
+            datum expr)))
+
+(defvar *debug-nesting-level* 0)
+(defclass debug-mixin (component-mixin) ())
+(defmethod expand-form :around ((c debug-mixin) expr k)
+  (with-gensyms (block-name)
+    `(block ,block-name
+       (let ((*debug-nesting-level* (1+ *debug-nesting-level*)))
+         (debug-print ',(form-of c) ,expr)
+         ,(call-next-method c expr k)))))
+
+(defun mapc/forms (fn)
+  (rec aux ((xs *toplevel-patterns*)) 
+    (if (null xs)
+        nil
+        (progn (funcall fn (car xs))
+               (aux (inner-forms-of (car xs)))
+               (aux (cdr xs))))))
+
+(defun gensym? (x)
+  (and (symbolp x)
+       (null (symbol-package x))))

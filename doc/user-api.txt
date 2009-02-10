@@ -1,0 +1,212 @@
+* Introduction
+
+Toadstool is a pattern matching library reminiscent of these included in
+OCaml or Haskell. Patterns are created at compile time to ensure fast
+execution.
+
+This document describes the default provided matching operators and
+concepts. The interface used for writing one's own operators will be
+described in a different document.
+
+* Copying
+
+The Toadstool library was written by Stanisław Halik and is released
+into the public domain. If you have a bug report or a feature request
+you can always drop me an email. My address is <sthalik@test123.ltd.pl>.
+
+* Macro syntax
+
+Three macros are provided - TOAD-CASE, TOAD-ECASE and TOAD-CCASE which
+vary only in how non-exhaustive matches are handled.
+
+The syntax for TOAD-CASE is as follows:
+
+  syntax := (toad-case input-expr* case*)
+  case   := pattern* -> guard? result-expr
+  guard  := (when guard-expr*)
+
+it should be noted that if there are multiple ways to interpret a
+pattern (e.g. using the OR operator or destructuring operators), failing
+a guard doesn't fail the whole pattern and other combinations will be
+checked against a guard. For example:
+
+  (toad-case '(1 2 -42 3)
+    (list (* t) x (* t)) -> (when (< x 0)) x)
+  ==> -42
+
+where there must be as many patterns as expressions in all cases.
+
+Some examples:
+
+  (toad-case (cons 42 69)
+    (cons a a) -> :same
+    (cons a b) -> :different
+    t          -> :not-a-cons)
+  ==> :different
+
+  (toad-case some-number
+    (> 100)     -> :big
+    (< 0)       -> :small
+    (>= 100 0)  -> :in-range
+    t           -> :not-a-number)
+  ==> ...
+
+  (toad-case (list 1 2 'foo "bar" :baz)
+    (list (* (or (and (satisfies #'numberp)
+                      (push numbers))
+                 (and (satisfies #'symbolp)
+                      (push symbols))
+                 (push others))))
+    -> (values numbers symbols others))
+  ==> (1 2), (foo :baz), ("bar")
+
+  (toad-case '((foo bar) foo)
+    (list (list a (and (not a) b)) a) -> (values a b)
+    t                                 -> (error "can't happen!"))
+  ==> foo, bar
+
+* Default matching operators
+
+** Constant value
+
+For every pattern in form (quote ...) or being of type
+(or null keyword (not symbol) (not (list))), it is tested against the
+expression using the EQL comparison function.
+
+** Always succeeding
+
+Every expression matches a pattern being a literal `T' symbol.
+
+** Variables
+
+Patterns of type (and symbol (not keyword) (not (member t nil))) are
+treated as variables. If a variable occurs more than once in a pattern,
+all values must be considered equal under EQL rules. Variables are bound
+to values they matched for the duration of the resulting expression.
+
+** Operators with arguments
+
+All operators in this subsection are of the form (operator args*) and
+define the amount and meaning of their arguments.
+
+There's a way to pass initialization arguments to patterns:
+
+  ((op :foo 42) ...)
+
+in contrast to the usual way of using operators:
+
+  (op ....)
+
+*** Sequence operators
+
+All operators in this section operate over sequences with given element
+of a sequence being the matched expression. There must be the same
+number of arguments as the elements of given sequence.
+
+**** (vector &rest args)
+
+Matching over vectors.
+
+**** (cons car cdr)
+
+Matching over conses.
+
+**** (list &rest args)
+
+Matching over lists. This is only an alias for CONS, so:
+
+  (list 1 2 3)
+
+is an alias to:
+
+  (cons 1 (cons 2 (cons 3 nil)))
+
+**** (list* ...)
+
+Matching over dotted lists. This is only an alias for CONS, so:
+
+  (list* 1 2 3)
+
+expands to:
+
+  (cons 1 (cons 2 3)
+
+*** Destructuring operators
+
+There are two operators, a star ("*") and a plus ("+") with meaning
+similar to one in BNF or Unix regular expressions. They expect being
+contained in a sequence and match over a number of elements. A star must
+match zero or more elements while a plus matches one or more elements.
+
+Some examples:
+
+  (defun find-number-somewhere (list)
+    (toad-case list
+      (list* (* t)
+             (and x (satisfies #'numberp))
+             t)
+      -> x))
+  
+  (find-number-somewhere '(a b 42 c))
+  ==> 42
+
+  (toad-case '(foo 1 2 1 2 1 2 bar)
+    (list a (* 1 2) b) -> (values a b))
+  ==> foo, bar
+
+*** (or &rest args)
+
+At least one of subpatterns must match.
+
+*** (and &rest args)
+
+All of subpatterns must match. Note that using destructuring operators
+in conjunction with AND yields strange results which may be considered
+to be a bug:
+
+  (toad-case '(1 2 3)
+    (list (and (* (satisfies #'symbolp))
+               (* (satisfies #'numberp))))
+    -> 'foo)
+  ==> foo
+
+The first clause did exactly that, checked if there was zero or more
+symbols in the list. It had no way of knowing that the list should end
+at this point. This somehow limits the usefulness of the AND operator.
+
+*** (not pattern)
+
+A pattern must not match. For example:
+
+  (toad-case 1 2
+    a a               -> (error "Can't happen")
+    a (and b (not a)) -> 'ok)
+  ==> ok
+
+*** (push variable-name)
+
+Expression is collected into a variable and visible in a list bound to
+that variable for the duration of the resulting expression. This works
+similarly to the "collect into" clause of the LOOP macro.
+
+*** Numerical comparison.
+
+There are four numerical comparison operators, >, >=, < and <=. They
+work the same, save for the name of the operator.
+
+When called with one argument, it is compared as in:
+
+  (> expr argument)
+
+when called with two arguments, it is compared as in:
+
+  (> first-argument expr second-argument)
+
+*** (typep type)
+
+Expression must be of given Lisp type (evaluated). For example:
+
+  (toad-case '(1 2 3)
+    (list (+ (typep 'number))) -> 'list-of-numbers
+    (list (+ (typep 'symbol))) -> 'list-of-symbols)
+  ===> list-of-numbers

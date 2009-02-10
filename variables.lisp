@@ -1,76 +1,93 @@
-(in-package #:toadstool)
+(in-package #:toadstool-impl)
 
-(defvar *variable-map*)
-(defvar *ignored*)
+(defcomponent variable-form (form)
+  name)
 
-(defun ignored-variables (pattern)
-  (let ((*ignored* '()))
-    (collect-variable-names pattern)
-    *ignored*))
-
-(defun used-variables (pattern)
-  (list-difference (collect-variable-names pattern)
-                   (ignored-variables pattern)))
-
-(define-keyword-fns (op pattern expr k)
-  (declare (ignore op pattern expr k))
-  '((:vars (pattern)
-     (collect-variable-names pattern))))
-
-;; variable
-(define-matcher-form (pattern expr k)
-  (:test (typep pattern '(cons matcher-variable null)))
-  (:vars (list (car pattern)))
-  (:expand (let ((pattern (car pattern)))
-             `(when (or (eq ,(var pattern) +magic-unbound-value+)
-                        (equality ,(var pattern) ,expr))
-                (let ((,(var pattern) ,expr))
-                  (declare (ignorable ,(var pattern)))
-                  ,(funcall k))))))
-
-(defun frob-vars (pattern)
-  (remove-duplicates
-   (rec aux ((x pattern))
-     (cond ((null x) '())
-           ((lookup-matcher-form pattern)
-            (collect-form-variables pattern))
-           ((and (consp x)
-                 (lookup-matcher-keyword (car x)))
-            (collect-matcher-variables (car x) x))
-           ((consp x)
-            (append (frob-vars (car x))
-                    (frob-vars (cdr x))))
-           (t (error "Can't get vars from ~S" pattern))))))
-
-;; bind variables
-(define-nesting (patterns expressions guard if-expr else-expr k)
-  (declare (ignore guard if-expr else-expr expressions))
-  (let* ((vars (reduce #'append (mapcar #'collect-variable-names patterns)))
-         (bound-variables (loop for i in vars collect (gensym (string i))))
-         (*variable-map* (mapcar #'cons vars bound-variables)))
-    (with-end-nesting (k) `(let ,(mapcar #'list vars bound-variables)
-                             (declare (ignorable ,@vars))
-                             ,(funcall k))
-      `(let (,@(loop for i in bound-variables
-                     collect (list i `',+magic-unbound-value+)))
-         (declare (ignorable ,@bound-variables))
-         ,(funcall k)))))
-
-(defun collect-matcher-variables (keyword pattern)
-  (funcall (lookup-matcher-keyword keyword)
-           :vars pattern nil nil))
-
-(defun collect-form-variables (pattern)
-  (funcall (lookup-matcher-form pattern)
-           :vars (list 'form pattern) nil nil))
+(defcomponent variable-nesting (nesting))
 
 (deftype matcher-variable ()
-  `(and symbol
-        (not (or keyword null (satisfies constantp)))))
+  '(and symbol (not keyword) (not (satisfies constantp))))
 
-(defun var (x)
-  (cdr (or (assoc x *variable-map*)
-           (error "BUG: No such variable ~S" x))))
+(defmethod matches? ((c variable-form) datum)
+  (typep datum 'matcher-variable))
 
-(defun collect-variable-names (pattern)
-  (remove-duplicates (frob-vars pattern)))
+(definit variable-form (var)
+  `(:name ,var))
+
+(defun single-var-occurence? (var)
+  (let ((count 0))
+    (mapc/forms (lambda (x)
+                  (when (and (typep x 'variable-form)
+                             (eq (name-of var)
+                                 (name-of x)))
+                    (incf count))))
+    (= count 1)))
+
+(defun toplevel-var-of (var) 
+  (find (find-form-expr var) *toplevel-syms*))
+
+(defmethod expand-nesting ((c variable-nesting) k)
+  (let ((vars '())
+        (ret (funcall k (if-expr-of c) (else-expr-of c))))
+    (mapc/forms (lambda (var) 
+                  (when (typep var 'variable-form) 
+                    (let ((outer? (has-outer-destructuring-mixin? var))
+                          (name (name-of var)))
+                      (pushnew (list name (if (and (not outer?)
+                                                   (single-var-occurence? var))
+                                              (toplevel-var-of var)
+                                              ''unbound))
+                               vars :key #'car))))) 
+    `(let ,vars
+       (declare (ignorable . ,(mapcar #'car vars)))
+       ,ret)))
+
+(defun has-outer-destructuring-mixin? (f)
+  (loop for form = (outer-form-of f) then (outer-form-of form)
+        while form
+        thereis (typep form 'destructuring-mixin)))
+
+(defmethod expand-form ((c variable-form) expr k)
+  (let ((outer? (has-outer-destructuring-mixin? c))
+        (name (name-of c)))
+    (cond ((and (not outer?)
+                (single-var-occurence? c)
+                (toplevel-var-of c))
+           (funcall k))
+          ((and (not outer?) (single-var-occurence? c)) 
+           `(progn (setq ,name ,expr)
+                   ,(funcall k)))
+          (t (with-gensyms (prev-name) 
+               `(if (or (eq ,name 'unbound)
+                        (equality ,name ,expr))
+                    (let ((,prev-name ,name))
+                      (setf ,name ,expr)
+                      ,(funcall k)
+                      (setf ,name ,prev-name))))))))
+
+(defcomponent push-form (operator)
+  var)
+
+(definit push-form (var)
+  `(:var ,var))
+
+(defcomponent push-nesting (nesting))
+
+(defmethod expand-nesting ((c push-nesting) k)
+  (let ((push '()))
+    (mapc/forms (lambda (var)
+                  (when (typep var 'push-form)
+                    (pushnew (var-of var) push))))
+    (with-end-nesting ((if else k) 
+                       `(let ,(loop for i in push
+                                    collect `(,i (nreverse ,i)))
+                          ,(funcall k if else)))
+      (let ((ret (funcall k (if-expr-of c) (else-expr-of c)))) 
+        `(let ,push
+           ,ret)))))
+
+(defmethod expand-form ((c push-form) expr k) 
+  `(progn (push ,expr ,(var-of c))
+          ,(funcall k)
+          (pop ,(var-of c))))
+
