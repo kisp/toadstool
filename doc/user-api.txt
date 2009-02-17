@@ -210,3 +210,10 @@ Expression must be of given Lisp type (evaluated). For example:
     (list (+ (typep 'number))) -> 'list-of-numbers
     (list (+ (typep 'symbol))) -> 'list-of-symbols)
   ===> list-of-numbers
+
+*** (class type &rest accessors-and-values)
+
+Equivalent to:
+
+`(and (typep ',class)
+      (with-accessors . ,accessors-and-values))

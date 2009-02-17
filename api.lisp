@@ -57,7 +57,7 @@
                                                            (+ 2 pos))
                                                        xs))))))))))))
 
-(defmacro toad-case (expr &body cases)
+(defmacro toad-case (expr &body cases) 
   (%toad-case (cons expr cases) nil))
 
 (defmacro toad-ecase (expr &body cases)

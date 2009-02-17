@@ -4,7 +4,6 @@
 (defvar *used-components*)
 (defvar *inner-forms* nil)
 (defvar *outer-form* nil)
-(defvar *normalized-components*)
 (defvar *debug-nesting-level* 0)
 (defvar *end-nestings* nil)
 (defvar *toplevel-syms*)
@@ -210,10 +209,6 @@ Useful for forms like T and destructuring operators to avoid macroexpansion clut
           (unwind-protect (progn . ,body)
             (closer-mop:ensure-class 'component :direct-superclasses nil))))
 
-(defun normalize-components (components)
-  (loop for i in components
-        nconc (%components i)))
-
 (defun toplevel-expansion (block-name patterns exprs
                            guard if-expr else-expr)
   (assert (= (length patterns)
@@ -224,8 +219,7 @@ Got patterns: ~S, expressions: ~S"
   (assert (/= 0 (length patterns)) nil "There must be at least one pattern")
   (assert (every #'gensym? exprs))
   (let* ((forms (mapcar #'mkform patterns))
-         (*toplevel-patterns* forms)
-         (*normalized-components* (normalize-components *used-components*))
+         (*toplevel-patterns* forms) 
          (*trace* nil)
          (*toplevel-syms* exprs))
     (with-root-mixins
@@ -342,19 +336,8 @@ Got patterns: ~S, expressions: ~S"
              (append (aux (inner-forms-of (car xs))
                           (list (car xs)))
                      tail)))))
-(defgeneric %components (x) 
-  (:method ((c standard-object))
-    (list (class-of c)))
-  (:method ((list list))
-    (loop for i in list
-          nconc (%components i)))
-  (:method ((c symbol))
-    (%components (coerce-to-obj c))))
-
 (defun components (type)
-  (loop for i in (if (boundp '*normalized-components*)
-                     *normalized-components*
-                     (normalize-components *used-components*))
+  (loop for i in *used-components*
         when (subtypep i type)
           collect i))
 

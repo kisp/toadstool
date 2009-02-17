@@ -4,7 +4,7 @@
   '(satisfies-form typep-form variable-form not-form quote-form list*-form
     literal-form +-form t-form and-form list-form *-form cons-form or-form
     variable-nesting vector-form vector-rest-form push-form push-nesting
-    with-accessors-form >-form >=-form <-form <=-form))
+    with-accessors-form >-form >=-form <-form <=-form class-form))
 
 (deftype constant-value ()
   '(or null keyword (not (or symbol cons))))
@@ -413,3 +413,11 @@
 (defcomponent >=-form (comparison-operator))
 (defcomponent <-form (comparison-operator))
 (defcomponent <=-form (comparison-operator))
+
+;;; class-form
+
+(defcomponent class-form (operator macro-mixin))
+
+(defexpand class-form (class-name &rest accessors-and-values)
+  `(and (typep ',class-name)
+        (with-accessors . ,accessors-and-values)))
