@@ -21,7 +21,8 @@
            #:not-form #:quote-form #:list*-form #:literal-form #:+-form
            #:t-form #:and-form #:list-form #:*-form #:cons-form #:or-form
            #:variable-nesting #:vector-form #:vector-rest-form #:push-form
-           #:push-nesting #:>-form #:>=-form #:<-form #:<=-form))
+           #:push-nesting #:>-form #:>=-form #:<-form #:<=-form #:eql-form
+           #:equal-form #:with-accessors-form #:class-form))
 
 (defpackage #:toadstool (:use #:cl #:toadstool-impl #:toadstool-system
                               #:toadstool-utils)

@@ -217,3 +217,11 @@ Equivalent to:
 
 `(and (typep ',class)
       (with-accessors . ,accessors-and-values))
+
+*** (eql lisp-expr)
+
+Expression must be EQL to lisp-expr (evaluated).
+
+*** (equal lisp-expr)
+
+Expression must be EQUAL to lisp-expr (evaluated).

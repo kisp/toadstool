@@ -4,7 +4,8 @@
   '(satisfies-form typep-form variable-form not-form quote-form list*-form
     literal-form +-form t-form and-form list-form *-form cons-form or-form
     variable-nesting vector-form vector-rest-form push-form push-nesting
-    with-accessors-form >-form >=-form <-form <=-form class-form))
+    with-accessors-form >-form >=-form <-form <=-form class-form eql-form
+    equal-form))
 
 (deftype constant-value ()
   '(or null keyword (not (or symbol cons))))
@@ -421,3 +422,19 @@
 (defexpand class-form (class-name &rest accessors-and-values)
   `(and (typep ',class-name)
         (with-accessors . ,accessors-and-values)))
+
+;;; eql-form
+
+(defcomponent eql-form (operator)
+  lisp-expr)
+
+(definit eql-form (lisp-expr)
+  `(:lisp-expr ,lisp-expr))
+
+(defmethod expand-form ((c eql-form) expr k)
+  `(when (,(name-of c) ,expr ,(lisp-expr-of c))
+     ,(funcall k)))
+
+;;; equal-form
+
+(defcomponent equal-form (eql-form))
