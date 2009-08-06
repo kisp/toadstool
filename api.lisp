@@ -65,3 +65,34 @@
 
 (defmacro toad-ccase (expr &body cases)
   (%toad-case (cons expr cases) '#'partial-cerror))
+
+(defclass macrolet-form (operator)
+  ((name :initarg name :reader name-of :allocation :class)
+   (function :initarg function :reader function-of :allocation :class)
+   (expansion :initarg form :reader expansion-of)))
+
+(defun make-macrolet-class (name function)
+  (let* ((m-f (find-class 'macrolet-form))
+         (class (make-instance 'standard-class :direct-superclasses
+         `(,m-f))))
+    (closer-mop:finalize-inheritance class)
+    (reinitialize-instance (closer-mop:class-prototype class)
+                           'function function
+                           'name name)
+    class))
+
+(defmethod initialize-instance :after ((c macrolet-form) &key)
+  (setf (slot-value c 'expansion)
+        (mkform (apply (function-of c)
+                       (cdr (form-of c))))))
+
+(defmethod expand-form ((c macrolet-form) expr k)
+  (expand-form (expansion-of c) expr k))
+
+(defmacro toad-macrolet (&environment env bindings &body body)
+  (let* ((macros (loop for (name lambda-list . body) in bindings
+                      collect (make-macrolet-class name
+                                   (compile nil `(lambda ,lambda-list .
+                                   ,body)))))
+         (*used-components* (append macros *used-components*)))
+    (cl-walker:macroexpand-all `(progn . ,body) env))) 

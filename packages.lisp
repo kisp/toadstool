@@ -27,4 +27,4 @@
 (defpackage #:toadstool (:use #:cl #:toadstool-impl #:toadstool-system
                               #:toadstool-utils)
   (:export #:toad-case #:toad-ecase #:toad-ccase #:partial-pattern-error
-           #:->))
+           #:-> #:toad-macrolet))

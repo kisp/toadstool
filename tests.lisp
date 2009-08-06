@@ -68,3 +68,10 @@
                  a a b -> 'bad
                  a b c -> 'ok)
       'ok))
+
+(deftest macro-let ()
+  (is '(1 2)
+      (toad-macrolet ((foo (&rest args)
+                           `(list . ,args)))
+        (toad-case '(1 2 3)
+          (foo a b) -> (values a b)))))

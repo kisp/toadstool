@@ -3,7 +3,7 @@
     :author "Stanislaw Halik"
     :licence "MIT/X11"
     :description "Pattern matcher"
-    :depends-on (#:closer-mop) 
+    :depends-on (#:closer-mop #:cl-walker) 
     :serial t
     :components ((:file "packages")
                  (:file "utils")
