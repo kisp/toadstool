@@ -19,52 +19,36 @@
           :patterns patterns
           :exprs exprs))
 
-(defun guard? (x)
-  (and (consp x)
-       (eq 'when (car x))))
+(defun %toad-case (exprs cases phail)
+  (with-gensyms (block-name)
+    (let ((syms (loop for i in exprs collect (gensym))))
+      `(block ,block-name
+         (let ,(mapcar #'list syms exprs)
+           ,(rec aux ((xs cases))
+                 (if (null xs)
+                     (and phail `(funcall ,phail (list ,@syms) ',cases))
+                     (let* ((patterns (caar xs))
+                            (exprs (cdar xs))
+                            (guard? (typep (car exprs)
+                                           '(cons (eql when)
+                                                  (cons t null))))
+                            (guard (if guard? (cadar exprs) t))
+                            (progn (if guard? (cdr exprs) exprs)))
+                       (toplevel-expansion block-name
+                                           patterns
+                                           syms
+                                           guard
+                                           `(progn . ,progn)
+                                           (aux (cdr xs)))))))))))
 
-(defun %toad-case (body phail)
-  (let* ((pos (position '-> body)) 
-         (exprs (subseq body 0 (/ pos 2)))
-         (cases (subseq body (- pos (length exprs))))) 
-    (assert (zerop (mod (length (remove-if #'guard? cases))
-                        (+ 2 (length exprs)))))
-    (with-gensyms (block-name)
-      (let ((syms (loop for i in exprs collect (gensym))))
-        `(block ,block-name
-           (let ,(mapcar #'list syms exprs)
-             ,(rec aux ((xs cases)) 
-                (if (null xs)
-                    (and phail `(funcall ,phail (list ,@syms) ',cases))
-                    (let* ((pos (or (position '-> xs)
-                                    (error "Malformed pattern")))
-                           (patterns (subseq xs 0 pos))
-                           (guard? (guard? (nth (+ 1 pos) xs)))
-                           (guard (if guard?
-                                      `(and . ,(cdr (nth (+ 1 pos) xs)))
-                                      't))
-                           (if-expr (nth (+ pos (if guard?
-                                                    2
-                                                    1))
-                                         xs))) 
-                      (toplevel-expansion block-name 
-                                          patterns
-                                          syms
-                                          guard
-                                          if-expr
-                                          (aux (nthcdr (if guard?
-                                                           (+ 3 pos)
-                                                           (+ 2 pos))
-                                                       xs))))))))))))
+(defmacro toad-case (exprs &body cases) 
+  (%toad-case exprs cases nil))
 
-(defmacro toad-case (expr &body cases) 
-  (%toad-case (cons expr cases) nil))
+(defmacro toad-ecase (exprs &body cases)
+  (%toad-case exprs cases '#'partial-error))
 
-(defmacro toad-ecase (expr &body cases)
-  (%toad-case (cons expr cases) '#'partial-error))
-
-(defmacro toad-ccase (expr &body cases)
-  (%toad-case (cons expr cases) '#'partial-cerror))
+(defmacro toad-ccase (exprs &body cases)
+  (%toad-case exprs cases '#'partial-cerror))
 
 (defclass macrolet-form (operator)
   ((name :initarg name :reader name-of :allocation :class)
@@ -95,4 +79,19 @@
                                    (compile nil `(lambda ,lambda-list .
                                    ,body)))))
          (*used-components* (append macros *used-components*)))
-    (cl-walker:macroexpand-all `(progn . ,body) env))) 
+    (cl-walker:macroexpand-all `(progn . ,body) env)))
+
+(defmacro toad-case1 (expr &body cases)
+  `(toad-case (,expr)
+      ,@(loop for (pattern . body) in cases
+              collect `((,pattern) . ,body))))
+
+(defmacro toad-ecase1 (expr &body cases)
+  `(toad-ecase (,expr)
+      ,@(loop for (pattern . body) in cases
+              collect `((,pattern) . ,body))))
+
+(defmacro toad-ccase1 (expr &body cases)
+  `(toad-ccase (,expr)
+      ,@(loop for (pattern . body) in cases
+              collect `((,pattern) . ,body))))

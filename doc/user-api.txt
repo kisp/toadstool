@@ -1,3 +1,7 @@
+XXX the documentation doesn't reflect changes to the syntax in the
+    latest version.
+
+
 * Introduction
 
 Toadstool is a pattern matching library reminiscent of these included in
@@ -21,48 +25,55 @@ vary only in how non-exhaustive matches are handled.
 
 The syntax for TOAD-CASE is as follows:
 
-  syntax := (toad-case input-expr* case*)
-  case   := pattern* -> guard? result-expr
-  guard  := (when guard-expr*)
+  syntax := (toad-case (input-expr+) case*)
+  case   := ((pattern+) guard? result-expr*)
+  guard  := (when guard-expr)
+
+There's also a TOAD-CASE1 macro:
+
+  syntax := (toad-case input-expr case*)
+  case   := (pattern guard? result-expr*)
+  guard  := (when guard-expr)
 
 it should be noted that if there are multiple ways to interpret a
 pattern (e.g. using the OR operator or destructuring operators), failing
 a guard doesn't fail the whole pattern and other combinations will be
 checked against a guard. For example:
 
-  (toad-case '(1 2 -42 3)
-    (list (* t) x (* t)) -> (when (< x 0)) x)
+  (toad-case1 '(1 2 -42 3)
+    ((list (* t) x (* t)) (when (< x 0)) x))
   ==> -42
 
 where there must be as many patterns as expressions in all cases.
 
 Some examples:
 
-  (toad-case (cons 42 69)
-    (cons a a) -> :same
-    (cons a b) -> :different
-    t          -> :not-a-cons)
+  (toad-case1 (cons 42 69)
+    ((cons a a) :same)
+    ((cons a b) :different)
+    (t          :not-a-cons))
   ==> :different
 
-  (toad-case some-number
-    (> 100)     -> :big
-    (< 0)       -> :small
-    (>= 100 0)  -> :in-range
-    t           -> :not-a-number)
+  (toad-case (some-number)
+    ((> 100)    :big)
+    ((< 0)      :small)
+    ((>= 100 0) :in-range)
+    (t          :not-a-number))
   ==> ...
 
-  (toad-case (list 1 2 'foo "bar" :baz)
-    (list (* (or (and (satisfies #'numberp)
-                      (push numbers))
-                 (and (satisfies #'symbolp)
-                      (push symbols))
-                 (push others))))
-    -> (values numbers symbols others))
+  (toad-case1 (list 1 2 'foo "bar" :baz)
+    ((list (* (or (and (satisfies #'numberp)
+                       (push numbers))
+                  (and (satisfies #'symbolp)
+                       (push symbols))
+                  (push others))))
+     (values numbers symbols others)))
   ==> (1 2), (foo :baz), ("bar")
 
-  (toad-case '((foo bar) foo)
-    (list (list a (and (not a) b)) a) -> (values a b)
-    t                                 -> (error "can't happen!"))
+  (toad-case1 '((foo bar) foo)
+    ((list (list a (and (not a) b)) a)
+     (values a b))
+    (t (error "can't happen!")))
   ==> foo, bar
 
 * Default matching operators
@@ -129,7 +140,7 @@ Matching over dotted lists. This is only an alias for CONS, so:
 
 expands to:
 
-  (cons 1 (cons 2 3)
+  (cons 1 (cons 2 3))
 
 *** Destructuring operators
 
@@ -141,11 +152,11 @@ match zero or more elements while a plus matches one or more elements.
 Some examples:
 
   (defun find-number-somewhere (list)
-    (toad-case list
-      (list* (* t)
-             (and x (satisfies #'numberp))
-             t)
-      -> x))
+    (toad-case1 list
+      ((list* (* t)
+              (and x (satisfies #'numberp))
+              t)
+       x)))
   
   (find-number-somewhere '(a b 42 c))
   ==> 42
@@ -164,10 +175,10 @@ All of subpatterns must match. Note that using destructuring operators
 in conjunction with AND yields strange results which may be considered
 to be a bug:
 
-  (toad-case '(1 2 3)
-    (list (and (* (satisfies #'symbolp))
-               (* (satisfies #'numberp))))
-    -> 'foo)
+  (toad-case1 '(1 2 3)
+    ((list (and (* (satisfies #'symbolp))
+                (* (satisfies #'numberp))))
+     'foo))
   ==> foo
 
 The first clause did exactly that, checked if there was zero or more
@@ -178,9 +189,10 @@ at this point. This somehow limits the usefulness of the AND operator.
 
 A pattern must not match. For example:
 
-  (toad-case 1 2
-    a a               -> (error "Can't happen")
-    a (and b (not a)) -> 'ok)
+  (toad-case (1 2)
+    (( a a)
+     (error "Can't happen"))
+    ((a (and b (not a))) 'ok))
   ==> ok
 
 *** (push variable-name)
@@ -206,9 +218,9 @@ when called with two arguments, it is compared as in:
 
 Expression must be of given Lisp type (evaluated). For example:
 
-  (toad-case '(1 2 3)
-    (list (+ (typep 'number))) -> 'list-of-numbers
-    (list (+ (typep 'symbol))) -> 'list-of-symbols)
+  (toad-ecase1 '(1 2 3)
+    ((list (+ (typep 'number))) 'list-of-numbers)
+    ((list (+ (typep 'symbol))) 'list-of-symbols))
   ===> list-of-numbers
 
 *** (class type &rest accessors-and-values)
