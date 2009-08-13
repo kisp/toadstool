@@ -43,6 +43,18 @@
       (intern (subseq str 0 diff)
               (symbol-package sym)))))
 
+(defmacro define-predicate (type)
+  (let ((pred (intern (concatenate 'string (string type) "?")
+                      (symbol-package type))))
+               `(defun ,pred (x)
+                  (typep x ',type))))
+
+(define-predicate component)
+(define-predicate form)
+(define-predicate operator)
+(define-predicate nesting)
+(define-predicate sequence-mixin)
+
 (defgeneric name-of (component)
   (:method ((c operator))
     (or (extract-prefix #1=(class-name (class-of c)) '-form)
@@ -116,17 +128,6 @@ Useful for forms like T and destructuring operators to avoid macroexpansion clut
               `(let ((,expr-name ,expression))
                  (declare (ignorable ,expr-name))
                  ,(call-next-method f expr-name k)))))))
-
-(defmacro define-predicate (type)
-  (let ((pred (intern (format nil "~A?" type))))
-               `(defun ,pred (x)
-                  (typep x ',type))))
-
-(define-predicate component)
-(define-predicate form)
-(define-predicate operator)
-(define-predicate nesting)
-(define-predicate sequence-mixin)
 
 (defgeneric expand-nesting (obj k))
 

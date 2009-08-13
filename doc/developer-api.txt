@@ -6,3 +6,11 @@ package) so they can be studied to understand the system.
 
 If you can't figure something out, drop me an email
 (sthalik@test123.ltd.pl).
+
+An example on how to write custom forms exists in #p"html.lisp".
+You need to use the `toadstool-system' package for writing standalone
+operators and also `toadstool-impl' for customizing ones included in the
+Toadstool distribution.
+
+There's no danger in putting your forms/operators in *used-packages*,
+since they only ever run if MATCHES? succeeds.

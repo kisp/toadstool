@@ -5,7 +5,7 @@
     literal-form +-form t-form and-form list-form *-form cons-form or-form
     variable-nesting vector-form vector-rest-form push-form push-nesting
     with-accessors-form >-form >=-form <-form <=-form class-form eql-form
-    equal-form))
+    equal-form assoc-form))
 
 (deftype constant-value ()
   '(or null keyword (not (or symbol cons))))
@@ -438,3 +438,34 @@
 ;;; equal-form
 
 (defcomponent equal-form (eql-form))
+
+;;; alist-form
+
+(defcomponent assoc-form (operator)
+  cases forms)
+
+(definit assoc-form (&rest cases)
+  `(:cases ,(loop for (key value) on cases by #'cddr
+                  collect (list key value))
+    :forms ,(loop for (key value) on cases by #'cddr
+                  collect (mkform value))))
+
+(defmethod assoc-value ((c assoc-form))
+  'cdr)
+
+(defmethod expand-form ((c assoc-form) expr k)
+  (expand-form (mkform '(typep 'list))
+               expr
+               (k
+                 (rec aux ((cases (cases-of c))
+                           (forms (forms-of c)))
+                   (if (null cases)
+                       (funcall k)
+                       (let* ((case (car cases))
+                              (var (car forms))
+                              (key (first case)))
+                         (expand-form var
+                                      `(,(assoc-value c)
+                                         (assoc ,key ,expr))
+                                      (k (aux (cdr cases)
+                                              (cdr forms))))))))))
