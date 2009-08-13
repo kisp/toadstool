@@ -23,7 +23,7 @@
            #:variable-nesting #:vector-form #:vector-rest-form #:push-form
            #:push-nesting #:>-form #:>=-form #:<-form #:<=-form #:eql-form
            #:equal-form #:with-accessors-form #:class-form
-           #:assoc-form #:assoc-value #:assoc-key))
+           #:assoc-form #:assoc-value #:assoc-key #:assoc-test))
 
 (defpackage #:toadstool (:use #:cl #:toadstool-impl #:toadstool-system
                               #:toadstool-utils)

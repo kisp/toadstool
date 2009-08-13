@@ -453,6 +453,12 @@
 (defmethod assoc-value ((c assoc-form))
   'cdr)
 
+(defmethod assoc-key ((c assoc-form) key)
+  key)
+
+(defmethod assoc-test ((c assoc-form))
+  'eql)
+
 (defmethod expand-form ((c assoc-form) expr k)
   (expand-form (mkform '(typep 'list))
                expr
@@ -466,6 +472,8 @@
                               (key (first case)))
                          (expand-form var
                                       `(,(assoc-value c)
-                                         (assoc ,key ,expr))
+                                         (assoc ,(assoc-key c key)
+                                                ,expr
+                                                :test ',(assoc-test c)))
                                       (k (aux (cdr cases)
                                               (cdr forms))))))))))
