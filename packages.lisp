@@ -1,5 +1,7 @@
 (defpackage #:toadstool-utils (:use #:cl)
-  (:export #:with-gensyms #:rec #:mappend))
+  (:export #:with-gensyms #:rec #:mappend #:fmt #:mklist #:partition
+           #:remove-from-plist #:thunk #:defcomponent #:gensym?
+           #:extract-prefix #:k #:k-once #:if-matches))
 
 (defpackage #:toadstool-system (:use #:cl #:toadstool-utils)
   (:export #:*default-components* #:*used-components*

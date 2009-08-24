@@ -9,6 +9,7 @@
 
 (deftype constant-value ()
   '(or null keyword (not (or symbol cons))))
+
 
 ;;; literal-form
 
@@ -24,6 +25,7 @@
 
 (definit literal-form (datum)
   `(:datum ,datum))
+
 
 ;;; typep-form
 
@@ -39,6 +41,7 @@
 (defmethod expand-form ((c typep-form) expr k)
   (if-matches `(typep ,expr ,(type-of* c))
               k))
+
 
 ;;; satisfies-form
 
@@ -51,6 +54,7 @@
 (defmethod expand-form ((c satisfies-form) expr k)
   (if-matches `(funcall ,(function-expr-of c) ,expr)
               k))
+
 
 ;;; not-form
 
@@ -65,6 +69,7 @@
     `(block ,block-name
        ,(expand-form (datum-of c) expr (k `(return-from ,block-name)))
        ,(funcall k))))
+
 
 ;;; and-form
 
@@ -86,6 +91,7 @@
         (expand-form (car xs)
                      expr
                      (k (aux (cdr xs)))))))
+
 
 ;;; or-form
 
@@ -99,6 +105,7 @@
   (k-once k
     `(progn ,@(loop for i in (forms-of c)
                     collect (expand-form i expr k)))))
+
 
 ;;; quote-form
 
@@ -145,6 +152,7 @@
 
 (defmethod sequence-get-state ((f cons-form))
   (cdr-state-of f))
+
 
 ;;; list*-form
 
@@ -158,6 +166,7 @@
           last-form
           `(cons ,(car xs)
                  ,(aux (cdr xs)))))))
+
 
 ;;; list-form
 
@@ -165,6 +174,9 @@
 
 (defexpand list-form (&rest elts)
   `(list* . ,(append elts '(nil))))
+
+
+;;; destructuring
 
 (defun destructure-form (seq forms k)
   (assert (not (endp forms)))
@@ -204,6 +216,7 @@
                   ,(sequence-set-state c state-name)))
               ,(sequence-set-state c (sequence-initial-state c expr))
               ,@(when greedy? `(,(funcall k)))))))
+
 
 ;;; *-form
 
@@ -217,6 +230,7 @@
 (defmethod expand-form ((c *-form) expr2 k)
   (multiple-value-bind (form expr) (find-sequence-form c)
     (destructuring-loop form (forms-of c) expr (greedy-of c) k)))
+
 
 ;;; t-form
 
@@ -230,6 +244,9 @@
 
 (defmethod ignored-expr? ((c t-form))
   t)
+
+
+;;; +-form destructuring
 
 (defcomponent +-form (operator destructuring-mixin)
   forms
@@ -249,6 +266,7 @@
                                     (sequence-get-state form)
                                     (greedy-of c) k)))
               ,(sequence-set-state form state)))))
+
 
 ;;; vector-rest-form
 
@@ -286,6 +304,7 @@
               `(when (> ,len-name ,index2-name)
                  ,ret)
               ret)))))
+
 
 ;;; vector-form
 
@@ -350,27 +369,11 @@
 
 (defmethod sequence-get-state ((f vector-rest-form))
   (index-sym-of f))
+
 
-(defmethod sequence-initial-state ((f destructuring-mixin) expr)
-  (sequence-get-state (find-sequence-form f)))
+;;; destructuring-mixin
 
-(defmethod sequence-cdr-state ((f destructuring-mixin) state)
-  (sequence-cdr-state (find-sequence-form f) state))
-
-(defmethod sequence-endp ((f destructuring-mixin) state)
-  (sequence-endp (find-sequence-form f) state))
-
-(defmethod sequence-item ((f destructuring-mixin) state)
-  (sequence-item (find-sequence-form f) state))
-
-(defmethod sequence-item ((f destructuring-mixin) state)
-  (sequence-item (find-sequence-form f) state))
-
-(defmethod sequence-set-state ((f destructuring-mixin) state)
-  (sequence-set-state (find-sequence-form f) state))
-
-(defmethod sequence-get-state ((f destructuring-mixin))
-  (sequence-get-state (find-sequence-form f)))
+
 
 ;;; with-accessors-form
 
@@ -396,6 +399,7 @@
                      `(,(car fns) ,expr)
                      (k (aux (cdr forms)
                              (cdr fns)))))))
+
 
 ;;; numeric forms
 
@@ -414,6 +418,7 @@
 (defcomponent >=-form (comparison-operator))
 (defcomponent <-form (comparison-operator))
 (defcomponent <=-form (comparison-operator))
+
 
 ;;; class-form
 
@@ -422,6 +427,7 @@
 (defexpand class-form (class-name &rest accessors-and-values)
   `(and (typep ',class-name)
         (with-accessors . ,accessors-and-values)))
+
 
 ;;; eql-form
 
@@ -434,12 +440,14 @@
 (defmethod expand-form ((c eql-form) expr k)
   `(when (,(name-of c) ,expr ,(lisp-expr-of c))
      ,(funcall k)))
+
 
 ;;; equal-form
 
 (defcomponent equal-form (eql-form))
+
 
-;;; alist-form
+;;; assoc-form
 
 (defcomponent assoc-form (operator)
   cases forms)
@@ -477,3 +485,22 @@
                                                 :test ',(assoc-test c)))
                                       (k (aux (cdr cases)
                                               (cdr forms))))))))))
+
+
+;;; debug-mixin
+
+(defvar *debug-nesting-level* 0)
+
+(defun debug-print (datum expr)
+  (let ((*print-level* 4))
+    (format *debug-io* "~A~S = ~S~%" (make-string *debug-nesting-level*
+                                                 :initial-element #\Space)
+            datum expr)))
+
+(defclass debug-mixin (component-mixin) ())
+(defmethod expand-form :around ((c debug-mixin) expr k)
+  (with-gensyms (block-name)
+    `(block ,block-name
+       (let ((*debug-nesting-level* (1+ *debug-nesting-level*)))
+         (debug-print ',(form-of c) ,expr)
+         ,(call-next-method c expr k)))))

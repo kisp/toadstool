@@ -8,6 +8,7 @@
     :components ((:file "packages")
                  (:file "utils")
                  (:file "core")
+                 (:file "destructuring")
                  (:file "forms")
                  (:file "variables")
                  (:file "api")))
