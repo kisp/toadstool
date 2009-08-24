@@ -7,26 +7,24 @@
 
 (defmacro toad-test (name ret &body body)
   `(deftest ,name ()
-     (is ,ret (toad-case . ,body))))
+     (is (equalp ,ret (toad-case . ,body)))))
 
-(defmacro deftest* (name expr expected-value &body body)
-  `(deftest ,name ()
-     ,@(loop for i in '(list vector)
-             collect `(is ,expected-value
-                           (toad-case ((coerce ,expr ',i))
-                                ,@(eval `(let ((type ',i))
-                                           ,@body)))))))
+(defun coerce* (value type)
+  (handler-case (coerce value type)
+    (error (e)
+      (declare (ignore e))
+      value)))
 
 (defmacro deftest* (name expr expected-value &body body)
   `(deftest ,name ()
      ,(labels ((frob (type)
-                 `(is (coerce ,expected-value '(or ,type t))
-                      (toad-case ((coerce ,expr '(or ,type t)))
-                                 ,@(subst type 'type body)))))
+                 `(is (equal ,expected-value
+                             (toad-case ((coerce* ,expr ',type))
+                               ,@(subst type 'type body))))))
         `(progn ,(frob 'list)
                 ,(frob 'vector)))))
 
-(deftest* simple-unification '(42 69 foo 69 42) '(42 69)
+(deftest* simple-unification '(42 69 42) '(42 69)
   (((type a b a))
    (list a b)))
 
@@ -69,7 +67,7 @@
    'bad)
   ((t) 'ok))
 
-(deftest* push-form '(1 a 1 2 b c) '((1 2 3) (a b c))
+(deftest* push-form '(1 a 2 b c 3) '((1 2 3) (a b c))
   (((type (* (or (and (typep 'number)
                        (push numbers))
                   (and (typep 'symbol)
@@ -93,4 +91,15 @@
                                 (((foo a b))
                                  (values a b))))))
 
+(deftest* destructuring-unification/1 '(a b b b c b) 'ok
+  (((type a (* b))) 'bad)
+  ((t) 'ok))
 
+(deftest* destructuring-unification/2 '(a b b b b b) 'ok
+  (((type a (* b))) 'ok))
+
+(deftest* destructuring-empty-sequence/1 '(a) 'ok
+  (((type a (* b))) 'ok))
+
+(deftest* destructuring-empty-sequence/2 '() 'ok
+  (((type (* a))) 'ok))

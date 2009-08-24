@@ -118,6 +118,9 @@
 (defmethod expand-form ((c quote-form) expr k)
   (if-matches `(equality ',(datum-of c) ,expr)
               k))
+
+
+;;; cons-form
 
 (defcomponent cons-form (operator sequence-mixin)
   car
@@ -128,7 +131,10 @@
   `(:car ,(mkform car) :cdr ,(mkform cdr)))
 
 (defmethod expand-form ((c cons-form) expr k)
-  `(when (consp ,expr)
+  `(when (,(if (typep (car-of c) 'destructuring-mixin)
+               'listp
+               'consp)
+           ,expr)
      (let ((,#1=(cdr-state-of c) (cdr ,expr)))
        (declare (ignorable ,#1#))
        ,(expand-form (car-of c)
