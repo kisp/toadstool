@@ -1,5 +1,7 @@
 (in-package #:toadstool-impl)
 
+(defvar *variable-alist* '())
+
 (defcomponent variable-form (form)
   name)
 
@@ -14,56 +16,27 @@
 (definit variable-form (var)
   `(:name ,var))
 
-(defun single-var-occurence? (var)
-  (let ((count 0))
-    (mapc/forms (lambda (x)
-                  (when (and (typep x 'variable-form)
-                             (eq (name-of var)
-                                 (name-of x)))
-                    (incf count))))
-    (= count 1)))
-
-(defun toplevel-var-of (var) 
-  (find (find-form-expr var) *toplevel-syms*))
+(defmethod expand-form ((c variable-form) expr k)
+  (let* ((name (name-of c))
+         (foo (find name *variable-alist* :key #'car))
+         (prev (cdr foo))
+         (*variable-alist* (list* (cons name expr) *variable-alist*)))
+    (if foo
+        `(when (equality ,prev ,expr)
+           ,(funcall k))
+        `(progn (setq ,name ,expr)
+                ,(funcall k)
+                (setq ,name nil)))))
 
 (defmethod expand-nesting ((c variable-nesting) k)
-  (let ((vars '())
-        (ret (funcall k (if-expr-of c) (else-expr-of c))))
-    (mapc/forms (lambda (var) 
-                  (when (typep var 'variable-form) 
-                    (let ((outer? (has-outer-destructuring-mixin? var))
-                          (name (name-of var)))
-                      (pushnew (list name (if (and (not outer?)
-                                                   (single-var-occurence? var))
-                                              (toplevel-var-of var)
-                                              ''unbound))
-                               vars :key #'car))))) 
+  (let ((vars '()))
+    (mapc/forms (lambda (x)
+                  (when (typep x 'variable-form)
+                    (push (name-of x) vars))))
+    (setq vars (remove-duplicates vars))
     `(let ,vars
-       (declare (ignorable . ,(mapcar #'car vars)))
-       ,ret)))
-
-(defun has-outer-destructuring-mixin? (f)
-  (loop for form = (outer-form-of f) then (outer-form-of form)
-        while form
-        thereis (typep form 'destructuring-mixin)))
-
-(defmethod expand-form ((c variable-form) expr k)
-  (let ((outer? (has-outer-destructuring-mixin? c))
-        (name (name-of c)))
-    (cond ((and (not outer?)
-                (single-var-occurence? c)
-                (toplevel-var-of c))
-           (funcall k))
-          ((and (not outer?) (single-var-occurence? c)) 
-           `(progn (setq ,name ,expr)
-                   ,(funcall k)))
-          (t (with-gensyms (prev-name) 
-               `(if (or (eq ,name 'unbound)
-                        (equality ,name ,expr))
-                    (let ((,prev-name ,name))
-                      (setf ,name ,expr)
-                      ,(funcall k)
-                      (setf ,name ,prev-name))))))))
+       ,(funcall k (if-expr-of c) (else-expr-of c)))))
+
 
 (defcomponent push-form (operator)
   var)

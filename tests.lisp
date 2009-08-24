@@ -77,9 +77,6 @@
    (list numbers symbols)))
 
 (deftest many-expressions ()
-  )
-
-(deftest many-expressions ()
   (is (toad-case (1 1 2)
                  ((a a b) (list a b)) )
       '(1 2))
