@@ -1,7 +1,7 @@
 (defpackage #:toadstool-utils (:use #:cl)
   (:export #:with-gensyms #:rec #:mappend #:fmt #:mklist #:partition
            #:remove-from-plist #:thunk #:defcomponent #:gensym?
-           #:extract-prefix #:k #:k-once #:if-matches))
+           #:extract-prefix #:if-matches))
 
 (defpackage #:toadstool-system (:use #:cl #:toadstool-utils)
   (:export #:*default-components* #:*used-components*
@@ -16,7 +16,7 @@
            #:defcomponent #:equality #:if-matches #:macro-mixin
            #:debug-mixin #:mapc/forms #:destructuring-mixin #:defexpand
            #:*toplevel-syms* #:toplevel-expansion #:expand-nesting
-           #:find-form-expr))
+           #:find-form-expr #:*using-k-once?*))
 
 (defpackage #:toadstool-impl (:use #:cl #:toadstool-system #:toadstool-utils)
   (:export #:*default-components* #:satisfies-form #:typep-form #:variable-form

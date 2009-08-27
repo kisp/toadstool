@@ -6,6 +6,7 @@
 (defvar *outer-form* nil)
 (defvar *toplevel-syms*)
 (defvar *toplevel-patterns*)
+(defvar *using-k-once?*)
 
 (defclass component ()
   ())
@@ -35,6 +36,21 @@
 (define-predicate form)
 (define-predicate operator)
 (define-predicate sequence-mixin)
+
+
+(defmacro k (&body body)
+  `(lambda () . ,body))
+
+(defmacro k-once (k &body body)
+  (assert (= 1 (length body)))
+  (with-gensyms (sym body-name k-name)
+    (let ((var (if (symbolp k) k (car k)))
+          (k (if (symbolp k) k (cadr k))))
+      `(let ((,body-name (let ((,var (lambda () ',sym))
+                               (*using-k-once?* t))
+                           ,(car body)))
+             (,k-name (funcall ,k)))
+         (subst ,k-name ',sym ,body-name)))))
 
 
 (defvar *end-nestings* nil)
@@ -179,7 +195,8 @@ Got patterns: ~S, expressions: ~S"
   (let* ((forms (mapcar #'mkform patterns))
          (*toplevel-patterns* forms) 
          (*trace* nil)
-         (*toplevel-syms* exprs))
+         (*toplevel-syms* exprs)
+         (*using-k-once?* nil))
     (with-root-mixins
       (labels ((aux (if-expr else-expr)
                  (rec aux ((exprs exprs)
@@ -252,3 +269,9 @@ Got patterns: ~S, expressions: ~S"
         (progn (funcall fn (car xs))
                (aux (inner-forms-of (car xs)))
                (aux (cdr xs))))))
+
+(defmethod print-object ((f form) stream)
+  (if *print-readably*
+      (call-next-method)
+      (print-unreadable-object (f stream :type t)
+        (write (form-of f) :stream stream))))

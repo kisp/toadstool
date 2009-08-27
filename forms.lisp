@@ -499,7 +499,7 @@
 
 (defun debug-print (datum expr)
   (let ((*print-level* 4))
-    (format *debug-io* "~A~S = ~S~%" (make-string *debug-nesting-level*
+    (format *debug-io* "~A~A = ~S~%" (make-string *debug-nesting-level*
                                                  :initial-element #\Space)
             datum expr)))
 
@@ -508,5 +508,5 @@
   (with-gensyms (block-name)
     `(block ,block-name
        (let ((*debug-nesting-level* (1+ *debug-nesting-level*)))
-         (debug-print ',(form-of c) ,expr)
+         (debug-print ',(format nil "~S" (form-of c)) ,expr)
          ,(call-next-method c expr k)))))

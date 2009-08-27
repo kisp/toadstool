@@ -2,7 +2,7 @@
   (:export #:tests))
 (in-package #:toadstool-tests)
 
-(defsuite tests)
+(defsuite (tests))
 (in-suite tests)
 
 (defmacro toad-test (name ret &body body)
@@ -16,7 +16,7 @@
       value)))
 
 (defmacro deftest* (name expr expected-value &body body)
-  `(deftest ,name ()
+  `(deftest (,name :compile-before-run t) () 
      ,(labels ((frob (type)
                  `(is (equal ,expected-value
                              (toad-case ((coerce* ,expr ',type))
@@ -50,7 +50,7 @@
 
 (deftest* failure-unwinds '(foo 1 2 3 4 foo) '(1 2 3 4)
   (((type a
-           (or (* (satisfies (lambda (x) (> 3 x))))
+          (or (* (satisfies (lambda (x) (> 3 x))))
                (* (and (typep 'number)
                        (push ret))))
            a))
@@ -103,3 +103,7 @@
 
 (deftest* destructuring-empty-sequence/2 '() 'ok
   (((type (* a))) 'ok))
+
+(deftest* variables-checked-every-time-with-k-once? '(1 2 2 2) '(1 2)
+  (((type (or b a) (or a b) a b)) 'bad)
+  (((type (or b a) (or a b) (or a b) b)) (list a b)))

@@ -1,10 +1,12 @@
 (in-package #:toadstool-impl)
 
-(defvar *variable-alist* '())
 (defvar +nil+ (make-symbol (string 'nil)))
+(defvar *variable-alist* '())
 
 (defcomponent variable-form (form)
-  name)
+  name
+  (using-k-once :initform nil :accessor using-k-once-of)
+  (previous :initform nil :accessor previous-of))
 
 (defcomponent variable-nesting (nesting))
 
@@ -22,50 +24,68 @@
         while form
         thereis (typep form 'destructuring-mixin)))
 
+(defun inside-k-once? (name)
+  (let ((ret nil))
+    (mapc/forms (lambda (x)
+                  (when (and (typep x 'variable-form)
+                             (eq name (name-of x))
+                             (using-k-once-of x))
+                    (setq ret t))))
+    t))
+
 (defmethod expand-form ((c variable-form) expr k)
+  (when *using-k-once?*
+    (setf (using-k-once-of c) t))
   (let* ((name (name-of c))
-         (foo (find name *variable-alist* :key #'car))
-         (prev (cdr foo))
+         (check-every-time? (var-checked-every-time? c))
+         (old (gensym))
+         (multiple? (find name *variable-alist* :key #'car))
          (*variable-alist* (list* (cons name expr) *variable-alist*))
-         (outer? (has-outer-destructuring? c))
-         (old (gensym)))
-    (cond (outer?
-           `(when (or (eq +nil+ ,name)
+         (prev (cdr multiple?)))
+    (when (and prev (null (previous-of c)))
+      (setf (previous-of c) prev))
+    (cond (check-every-time?
+           `(when (or (equality +nil+ ,name)
                       (equality ,name ,expr))
               (let ((,old ,name))
                 (setq ,name ,expr)
                 ,(funcall k)
                 (setq ,name ,old))))
-          (foo
-           `(when (equality ,prev ,expr)
-              ,(funcall k)))
+          (multiple?
+           `(progn (when (equality ,prev ,expr) 
+                      ,(funcall k))))
           (t
            `(progn (setq ,name ,expr)
                    ,(funcall k)
                    (setq ,name nil))))))
 
+(defun var-checked-every-time? (var)
+  (or (has-outer-destructuring? var)
+      (inside-k-once? var)))
+
 (defmethod expand-nesting ((c variable-nesting) k)
-  (let ((vars '()))
+  (let ((vars '())
+        (*variable-alist* '()))
     (mapc/forms (lambda (x)
                   (when (typep x 'variable-form)
                     (push x vars))))
-    (let ((bindings (loop for var in (remove-duplicates vars :key #'name-of)
-                          for name = (name-of var)
-                          if (some (lambda (x)
-                                     (and (eq name (name-of x))
-                                          (has-outer-destructuring? x)))
-                                   vars)
-                            collect (list name `',+nil+)
-                          else
-                            collect (list name nil))))
+    (let ((bindings (remove-duplicates vars :key #'name-of)))
       (with-end-nesting ((if else k)
-                         `(progn ,@(loop for (var val) in bindings
-                                         when (not (null val))
-                                           collect `(when (eq ,val ,var)
-                                                      (setq ,var nil)))
+                         `(progn ,@(loop for var in bindings
+                                         for name = (name-of var)
+                                         when (var-checked-every-time? var)
+                                           collect `(when (eq ,name +nil+)
+                                                      (setq ,name nil)))
                                  ,(funcall k if else)))
-        `(let ,bindings
-           ,(funcall k (if-expr-of c) (else-expr-of c)))))))
+        (let ((body (funcall k (if-expr-of c) (else-expr-of c)))
+              (vars (mapcar (lambda (c)
+                              (list (name-of c)
+                                    (if (var-checked-every-time? c)
+                                        `+nil+
+                                        nil)))
+                            bindings)))
+          `(let ,vars
+             ,body))))))
 
 
 (defcomponent push-form (operator)

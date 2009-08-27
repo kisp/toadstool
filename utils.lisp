@@ -83,21 +83,5 @@
       (intern (subseq str 0 diff)
               (symbol-package sym)))))
 
-(defmacro k (&body body)
-  `(lambda () . ,body))
-
-(defmacro k-once (k &body body)
-  (assert (= 1 (length body)))
-  (let ((k (if (symbolp k)
-               k
-               (cadr k)))
-        (var (if (symbolp k)
-                 k
-                 (car k)))
-        (sym (gensym)))
-    ``(let ((,',sym (lambda () ,(funcall ,k))))
-        ,(let ((,var (lambda () `(funcall ,',sym))))
-           ,(car body)))))
-
 (defmacro if-matches (test k)
   ``(if ,,test ,(funcall ,k)))
