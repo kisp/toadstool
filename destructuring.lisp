@@ -2,16 +2,6 @@
 
 (defclass destructuring-mixin (sequence-mixin) ())
 
-(defgeneric ignored-expr? (form)
-  (:documentation "If T is returned, expression isn't rebound to a gensym.
-Useful for forms like T and destructuring operators to avoid macroexpansion clutter.")
-  (:method (form)
-    nil)
-  (:method ((c macro-mixin))
-    t)
-  (:method ((c destructuring-mixin))
-    t))
-
 (defmethod sequence-initial-state ((f destructuring-mixin) expr)
   (sequence-get-state (find-sequence-form f)))
 

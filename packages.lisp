@@ -8,12 +8,11 @@
            #:component #:form #:operator #:form-of #:inner-forms-of
            #:outer-form-of #:effective-inner-forms-of #:name-of
            #:component-mixin #:nesting #:if-expr-of #:else-expr-of
-           #:sequence-mixin #:ignored-expr-mixin #:ignored-expr?
-           #:k #:with-end-nesting #:k-once #:matches? #:expand-form
-           #:mkform #:init #:sequence-initial-state #:sequence-cdr-state
-           #:sequence-endp #:sequence-item #:sequence-get-state
-           #:sequence-set-state #:find-sequence-form #:definit
-           #:defcomponent #:equality #:if-matches #:macro-mixin
+           #:sequence-mixin #:k #:with-end-nesting #:k-once #:matches?
+           #:expand-form #:mkform #:init #:sequence-initial-state
+           #:sequence-cdr-state #:sequence-endp #:sequence-item
+           #:sequence-get-state #:sequence-set-state #:find-sequence-form
+           #:definit #:defcomponent #:equality #:if-matches #:macro-mixin
            #:debug-mixin #:mapc/forms #:destructuring-mixin #:defexpand
            #:*toplevel-syms* #:toplevel-expansion #:expand-nesting
            #:find-form-expr #:*using-k-once?*))

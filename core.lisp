@@ -23,7 +23,6 @@
 (defclass macro-mixin ()
   (expansion))
 (defclass sequence-mixin () ())
-(defclass ignored-expr-mixin () ())
 
 
 (defmacro define-predicate (type)
@@ -132,17 +131,15 @@
 (defgeneric expand-form (form expression k)
   (:documentation "Generate an expansion of a pattern element")
   (:method :around ((f form) expression k)
-    (if (ignored-expr? f)
-        (call-next-method)
-        (let ((expr-name (if (gensym? expression)
-                             expression
-                             (gensym))))
-          (push (cons f expr-name) *trace*)
-          (if (gensym? expression)
-              (call-next-method)
-              `(let ((,expr-name ,expression))
-                 #+(or)  (declare (ignorable ,expr-name))
-                 ,(call-next-method f expr-name k)))))))
+    (let ((expr-name (if (gensym? expression)
+                         expression
+                         (gensym))))
+      (push (cons f expr-name) *trace*)
+      (if (gensym? expression)
+          (call-next-method)
+          `(let ((,expr-name ,expression))
+             #+(or)  (declare (ignorable ,expr-name))
+             ,(call-next-method f expr-name k))))))
 
 (defmethod initialize-instance :around ((form form) &key)
   (when (boundp '*inner-forms*) 

@@ -248,9 +248,6 @@
 (defmethod expand-form ((c t-form) expr k)
   `(progn ,expr
           ,(funcall k)))
-
-(defmethod ignored-expr? ((c t-form))
-  t)
 
 
 ;;; +-form destructuring
