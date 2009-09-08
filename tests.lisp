@@ -2,8 +2,7 @@
   (:export #:tests))
 (in-package #:toadstool-tests)
 
-(defsuite (tests))
-(in-suite tests)
+(defsuite* tests)
 
 (defmacro toad-test (name ret &body body)
   `(deftest ,name ()
@@ -15,14 +14,31 @@
       (declare (ignore e))
       value)))
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defun mklist (x)
+    (if (listp x)
+        x
+        (list x))))
+
 (defmacro deftest* (name expr expected-value &body body)
-  `(deftest (,name :compile-before-run t) () 
-     ,(labels ((frob (type)
-                 `(is (equal ,expected-value
-                             (toad-case ((coerce* ,expr ',type))
-                               ,@(subst type 'type body))))))
-        `(progn ,(frob 'list)
-                ,(frob 'vector)))))
+  (destructuring-bind (name &key (types '(list vector))) (mklist name)
+    `(progn ,@(mapcar (lambda (name type)
+                        (destructuring-bind (type &key failure-expected-p) (mklist type)
+                          `(deftest (,name :compile-before-run t) ()
+                             (,(if failure-expected-p
+                                   'with-expected-failures
+                                   'progn)
+                               (is (equal ,expected-value
+                                          (toad-case ((coerce* ,expr ',type))
+                                            ,@(subst type 'type body))))))))
+                      (mapcar (lambda (x)
+                                (intern (format nil "~A/~A"
+                                                (symbol-name name)
+                                                (symbol-name (if (consp x)
+                                                                 (first x)
+                                                                 x)))))
+                              types)
+                      types))))
 
 (deftest* simple-unification '(42 69 42) '(42 69)
   (((type a b a))
@@ -98,10 +114,12 @@
 (deftest* destructuring-unification/2 '(a b b b b b) 'ok
   (((type a (* b))) 'ok))
 
-(deftest* destructuring-empty-sequence/1 '(a) 'ok
+(deftest* (destructuring-empty-sequence/1
+           :types (list (vector :failure-expected-p t)))
+    '(a) 'ok
   (((type a (* b))) 'ok))
 
-(deftest* destructuring-empty-sequence/2 '() 'ok
+(deftest* (destructuring-empty-sequence/2 :types (list (vector :failure-expected-p t))) '() 'ok
   (((type (* a))) 'ok))
 
 (deftest* variables-checked-every-time-with-k-once? '(1 2 2 2) '(1 2)

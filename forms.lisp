@@ -136,7 +136,7 @@
                'consp)
            ,expr)
      (let ((,#1=(cdr-state-of c) (cdr ,expr)))
-       (declare (ignorable ,#1#))
+       #+(or) (declare (ignorable ,#1#))
        ,(expand-form (car-of c)
                      `(car ,expr)
                      (k (expand-form (cdr-of c) (cdr-state-of c) k))))))
@@ -197,12 +197,11 @@
                                (k `(progn
                                      ,@(unless (typep (car forms)
                                                       'destructuring-mixin)
-                                              
                                          `(,(sequence-set-state
                                              seq
                                              (sequence-cdr-state
                                               seq (sequence-get-state seq)))))
-                                          ,(aux (cdr forms))))))))
+                                     ,(aux (cdr forms))))))))
        
        ,(sequence-set-state seq state-name))))
 
@@ -234,8 +233,9 @@
   `(:forms ,(mapcar #'mkform forms)))
 
 (defmethod expand-form ((c *-form) expr2 k)
-  (multiple-value-bind (form expr) (find-sequence-form c)
-    (destructuring-loop form (forms-of c) expr (greedy-of c) k)))
+  `(progn ,expr2
+          ,(multiple-value-bind (form expr) (find-sequence-form c)
+             (destructuring-loop form (forms-of c) expr (greedy-of c) k))))
 
 
 ;;; t-form
@@ -246,7 +246,8 @@
   (eq datum 't))
 
 (defmethod expand-form ((c t-form) expr k)
-  (funcall k))
+  `(progn ,expr
+          ,(funcall k)))
 
 (defmethod ignored-expr? ((c t-form))
   t)
@@ -264,7 +265,8 @@
 (defmethod expand-form ((c +-form) expr2 k)
   (multiple-value-bind (form expr) (find-sequence-form c)
     (let ((state (sequence-initial-state form expr)))
-      `(progn ,(sequence-set-state form state)
+      `(progn ,expr2
+              ,(sequence-set-state form state)
               ,(destructure-form form (forms-of c)
                                  (k
                                    (destructuring-loop
@@ -281,12 +283,12 @@
 
 (definit vector-rest-form (elt index-sym len-name vec-name destructuring rest)
   `(:elt ,(mkform elt)
-    :index-sym ,(gensym)
-    :len-name ,len-name
-    :vec-name ,vec-name
-    :rest ,rest
-    :index-sym2 ,index-sym
-    :destructuring ,destructuring))
+         :index-sym ,(gensym)
+         :len-name ,len-name
+         :vec-name ,vec-name
+         :rest ,rest
+         :index-sym2 ,index-sym
+         :destructuring ,destructuring))
 
 (defmethod expand-form ((c vector-rest-form) expr k)
   (let ((index-name (index-sym-of c))
@@ -328,15 +330,15 @@
                                   (cons x (effective-inner-forms-of x)))
                                 (mapcar #'mkform elts))))))
       `(:elt ,(and elts
-                  (rec aux ((elts elts))
-                    (if (null elts)
-                        nil
-                        (mkform `(vector-rest ,(car elts)
-                                              ,index-sym
-                                              ,len-name
-                                              ,vec-name
-                                              ,destructuring?
-                                              ,(aux (cdr elts)))))))
+                   (rec aux ((elts elts))
+                     (if (null elts)
+                         nil
+                         (mkform `(vector-rest ,(car elts)
+                                               ,index-sym
+                                               ,len-name
+                                               ,vec-name
+                                               ,destructuring?
+                                               ,(aux (cdr elts)))))))
              :index-sym ,index-sym
              :len-name ,len-name
              :vec-name ,vec-name
@@ -414,11 +416,11 @@
 (defmethod expand-form ((c comparison-operator) expr k)
   (ecase (length (form-of c))
     (2 (destructuring-bind (name first) (form-of c)
-           `(when (,name ,expr ,first)
-              ,(funcall k))))
+         `(when (,name ,expr ,first)
+            ,(funcall k))))
     (3 (destructuring-bind (name first second) (form-of c)
-           `(when (,name ,first ,expr ,second)
-              ,(funcall k))))))
+         `(when (,name ,first ,expr ,second)
+            ,(funcall k))))))
 
 (defcomponent >-form (comparison-operator))
 (defcomponent >=-form (comparison-operator))
@@ -461,8 +463,8 @@
 (definit assoc-form (&rest cases)
   `(:cases ,(loop for (key value) on cases by #'cddr
                   collect (list key value))
-    :forms ,(loop for (key value) on cases by #'cddr
-                  collect (mkform value))))
+           :forms ,(loop for (key value) on cases by #'cddr
+                         collect (mkform value))))
 
 (defmethod assoc-value ((c assoc-form))
   'cdr)
@@ -500,7 +502,7 @@
 (defun debug-print (datum expr)
   (let ((*print-level* 4))
     (format *debug-io* "~A~A = ~S~%" (make-string *debug-nesting-level*
-                                                 :initial-element #\Space)
+                                                  :initial-element #\Space)
             datum expr)))
 
 (defclass debug-mixin (component-mixin) ())

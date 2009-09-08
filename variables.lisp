@@ -25,13 +25,14 @@
         thereis (typep form 'destructuring-mixin)))
 
 (defun inside-k-once? (name)
-  (let ((ret nil))
+  #+ (or) (let ((ret nil))
     (mapc/forms (lambda (x)
                   (when (and (typep x 'variable-form)
                              (eq name (name-of x))
                              (using-k-once-of x))
                     (setq ret t))))
-    t))
+            ret)
+  *using-k-once?*)
 
 (defmethod expand-form ((c variable-form) expr k)
   (when *using-k-once?*

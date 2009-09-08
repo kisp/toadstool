@@ -46,9 +46,11 @@
   (with-gensyms (sym body-name k-name)
     (let ((var (if (symbolp k) k (car k)))
           (k (if (symbolp k) k (cadr k))))
-      `(let ((,body-name (let ((,var (lambda () ',sym))
-                               (*using-k-once?* t))
-                           ,(car body)))
+      `(let ((,body-name (let ((,var (lambda () ',sym)))
+                           (progn (if (boundp '*using-k-once?*)
+                                      (setq *using-k-once?* t)
+                                      (warn "Expanded K-ONCE outside of TOPLEVEL-EXPANSION"))
+                                  ,(car body))))
              (,k-name (funcall ,k)))
          (subst ,k-name ',sym ,body-name)))))
 
@@ -139,7 +141,7 @@
           (if (gensym? expression)
               (call-next-method)
               `(let ((,expr-name ,expression))
-                 (declare (ignorable ,expr-name))
+                 #+(or)  (declare (ignorable ,expr-name))
                  ,(call-next-method f expr-name k)))))))
 
 (defmethod initialize-instance :around ((form form) &key)
