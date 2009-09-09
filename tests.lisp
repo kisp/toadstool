@@ -1,8 +1,18 @@
 (defpackage #:toadstool-tests (:use #:cl #:stefil #:toadstool)
-  (:export #:tests))
+  (:export #:run-tests)
+  (:import-from #:stefil #:expected-p #:failure-description-of #:assertion-failed))
 (in-package #:toadstool-tests)
 
 (defsuite* tests)
+
+(defun run-tests (&key whine-on-expected-failures-p)
+  (flet ((frob-error (e)
+           (when (expected-p (failure-description-of e))
+             (continue))))
+    (if whine-on-expected-failures-p
+        (tests)
+        (handler-bind ((assertion-failed #'frob-error))
+          (tests)))))
 
 (defmacro toad-test (name ret &body body)
   `(deftest ,name ()
