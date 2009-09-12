@@ -4,6 +4,7 @@
 (defvar *variable-alist* '())
 
 (defcomponent variable-form (form)
+  name
   (using-k-once :initform nil :accessor using-k-once-of)
   (previous :initform nil :accessor previous-of))
 
