@@ -79,7 +79,9 @@
                                    (compile nil `(lambda ,lambda-list .
                                    ,body)))))
          (*used-components* (append macros *used-components*)))
-    (cl-walker:macroexpand-all `(progn . ,body) env)))
+    (#+sbcl sb-cltl2:macroexpand-all
+     #-sbcl cl-walker:macroexpand-all
+     `(progn . ,body) env)))
 
 (defmacro toad-case1 (expr &body cases)
   `(toad-case (,expr)

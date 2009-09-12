@@ -132,6 +132,9 @@
 (deftest* (destructuring-empty-sequence/2 :types (list (vector :failure-expected-p t))) '() 'ok
   (((type (* a))) 'ok))
 
-(deftest* variables-checked-every-time-with-k-once? '(1 2 2 2) '(1 2)
+(deftest* variables-checked-every-time-with-k-once?/1 '(1 2 2 2) '(1 2)
   (((type (or b a) (or a b) a b)) 'bad)
   (((type (or b a) (or a b) (or a b) b)) (list a b)))
+
+(deftest* variables-checked-every-time-with-k-once?/2 '(1 1) 'ok
+  (((type a (or a b))) 'ok))

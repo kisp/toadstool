@@ -5,7 +5,7 @@
     literal-form +-form t-form and-form list-form *-form cons-form or-form
     variable-nesting vector-form vector-rest-form push-form push-nesting
     with-accessors-form >-form >=-form <-form <=-form class-form eql-form
-    equal-form assoc-form))
+    equal-form assoc-form char-form string-form))
 
 (deftype constant-value ()
   '(or null keyword (not (or symbol cons))))
@@ -509,3 +509,37 @@
        (let ((*debug-nesting-level* (1+ *debug-nesting-level*)))
          (debug-print ',(format nil "~S" (form-of c)) ,expr)
          ,(call-next-method c expr k)))))
+
+
+;;; char-form
+
+(defgeneric coerce-to-character-list (datum)
+  (:method ((c character))
+    (list c))
+  (:method ((c string))
+    (map 'list 'identity c))
+  (:method ((c sequence))
+    (mappend 'coerce-to-character-list (coerce c 'list))))
+
+(defcomponent char-form (operator destructuring-mixin)
+  forms)
+
+(definit char-form (&rest chars)
+  `(:forms ,(mapcar #'mkform (coerce-to-character-list chars))))
+
+(defmethod expand-form ((c char-form) expr2 k)
+  (multiple-value-bind (form expr) (find-sequence-form c)
+    (let ((state (sequence-initial-state form expr)))
+      `(progn ,expr2
+              ,(sequence-set-state form state)
+              ,(destructure-form form (forms-of c) k)
+              ,(sequence-set-state form state)))))
+
+
+;;; string-form
+
+(defcomponent string-form (operator macro-mixin))
+
+(defexpand string-form (&rest elts)
+  `(and (typep 'string)
+        (vector ,@elts)))
