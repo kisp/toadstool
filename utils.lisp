@@ -63,9 +63,10 @@
                            (keyword (find-package '#:keyword)))
                       (append (list name)
                               (foo :initarg s (thunk (intern str keyword)))
-                              (when (or (null (getf s :reader))
-                                        (not (eq (getf s :reader)
-                                                 (getf s :accessor))))
+                              (when (and (not (null (getf s :reader)))
+                                         (or (null (getf s :accessor))
+                                             (not (eq (getf s :reader)
+                                                  (getf s :accessor)))))
                                 (foo :reader s (thunk (intern
                                                        (fmt "~A~A" str of)))))
                               req
