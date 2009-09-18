@@ -65,7 +65,9 @@
                               (foo :initarg s (thunk (intern str keyword)))
                               (when (or (null (getf s :accessor))
                                         (not (eq (getf s :accessor)
-                                                 (getf s :reader))))
+                                                 (if (null (getf s :reader))
+                                                     (find-symbol (fmt "~A~A" str of))
+                                                     (getf s :reader)))))
                                 (foo :reader s (thunk (intern
                                                        (fmt "~A~A" str of)))))
                               req
