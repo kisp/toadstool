@@ -80,7 +80,7 @@
                                    ,body)))))
          (*used-components* (append macros *used-components*)))
     (#+sbcl sb-cltl2:macroexpand-all
-     #-sbcl cl-walker:macroexpand-all
+     #-sbcl hu.dwim.walker:macroexpand-all
      `(progn . ,body) env)))
 
 (defmacro toad-case1 (expr &body cases)
